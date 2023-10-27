@@ -1,0 +1,4 @@
+dist-newstyle/
+.direnv/
+scribeKCT.log
+scribeEff.log
