@@ -18,16 +18,16 @@ name:            katip-effectful
 -- See the Haskell package versioning policy (PVP) for standards
 -- guiding when and how versions should be incremented.
 -- https://pvp.haskell.org
--- PVP summary:     +-+------- breaking API changes
---                  | | +----- non-breaking API additions
---                  | | | +--- code changes with no API change
-version:         0.1.0.0
+version:         0.0.1
 
 -- A short (one-line) description of the package.
--- synopsis:
+synopsis:        Katip integration for Effectful
 
 -- A longer description of the package.
--- description:
+description:
+  Provides a Katip and KatipContext instance for the Eff Monad and re-exports all of Katip's API
+
+homepage:        https://github.com/eldritch-cookie/katip-effectful
 
 -- The license under which the package is released.
 license:         BSD-3-Clause
@@ -45,8 +45,10 @@ maintainer:      eldritch.cookie@disroot.org
 -- copyright:
 build-type:      Simple
 
+bug-reports: https://github.com/eldritch-cookie/katip-effectful/issues
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files: CHANGELOG.md
+category:        library, logging, data, bsd3
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
 -- extra-source-files:
@@ -86,18 +88,23 @@ test-suite katip-effectful-test
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Main.hs
+  other-modules:      OutputTest
   ghc-options:        -threaded
   build-depends:
-    , containers
+    , containers            >=0.6.7    && <0.7
     , katip-effectful
-    , QuickCheck
-    , quickcheck-instances
-    , tasty
-    , tasty-golden
-    , tasty-hunit
-    , tasty-quickcheck
-    , text
-    , time
-    , unix
+    , QuickCheck            >=2.14.3   && <2.15
+    , quickcheck-instances  >=0.3.29.1 && <0.3.30
+    , tasty                 >=1.4.3    && <1.5
+    , tasty-golden          >=2.3.5    && <2.4
+    , tasty-hunit           >=0.10.1   && <0.11
+    , tasty-quickcheck      >=0.10.2   && <0.11
+    , text                  >=2.0.2    && <2.1
+    , time                  >=1.12.2   && <1.13
+    , unix                  >=2.7.3    && <2.8
 
   build-tool-depends: tasty-discover:tasty-discover
+
+source-repository head
+  type:     git
+  location: https://github.com/eldritch-cookie/katip-effectful
