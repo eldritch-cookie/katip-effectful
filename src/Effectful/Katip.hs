@@ -196,6 +196,7 @@ import Language.Haskell.TH (Loc)
 import Language.Haskell.TH.Lib
 import System.IO (Handle)
 import Unsafe.Coerce (unsafeCoerce)
+import qualified Effectful.Katip as haskell
 
 -- | A Effect you can use to run logging actions. there is only one effect as we can't have duplicated instances.
 type KatipE :: Effect
@@ -265,27 +266,31 @@ closeScribe name = do
   MkKatipE le lc ns <- getStaticRep
   newle <- unsafeEff_ $ K.closeScribe name le
   putStaticRep $ MkKatipE newle lc ns
-
+-- | get the 'KatipE' 'LogEnv'
 getLogEnv :: forall es. (KatipE :> es) => Eff es LogEnv
 getLogEnv = do
   s <- getStaticRep @KatipE
   case s of
     MkKatipE le _ _ -> return le
+-- | temporarily modify the 'LogEnv'
 localLogEnv :: forall es a. (KatipE :> es) => (LogEnv -> LogEnv) -> Eff es a -> Eff es a
 localLogEnv f = localStaticRep @KatipE $ \(MkKatipE le lc ns) -> MkKatipE (f le) lc ns
-
+-- | get the 'KatipE' 'LogContexts'
 getKatipContext :: (KatipE :> es) => Eff es LogContexts
 getKatipContext = do
   s <- getStaticRep @KatipE
   case s of
     MkKatipE _ lc _ -> return lc
+-- | temporarily modify the 'LogContexts'
 localKatipContext :: forall es a. (KatipE :> es) => (LogContexts -> LogContexts) -> Eff es a -> Eff es a
 localKatipContext f = localStaticRep @KatipE $ \(MkKatipE le lc ns) -> MkKatipE le (f lc) ns
 getKatipNamespace :: forall es. (KatipE :> es) => Eff es Namespace
+-- | get the 'KatipE' 'Namespace'
 getKatipNamespace = do
   s <- getStaticRep @KatipE
   case s of
     MkKatipE _ _ ns -> return ns
+-- | temporarily modify the 'Namespace'
 localKatipNamespace :: forall es a. (KatipE :> es) => (Namespace -> Namespace) -> Eff es a -> Eff es a
 localKatipNamespace f = localStaticRep @KatipE $ \(MkKatipE le lc ns) -> MkKatipE le lc $ f ns
 
@@ -299,53 +304,122 @@ data Dict a where
 
 useDict :: forall a r. Dict a -> ((a) => r) -> r
 useDict MkDict r = r
-
+-- | Log with full context, but without any code location.
 logF :: forall a es. (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> LogStr -> Eff es ()
 logF a ns sev logs = unsafeEmbedIOE $ K.logF a ns sev logs
 
+-- | Log a message without any payload/context or code location.
 logMsg :: forall es. (KatipE :> es) => Namespace -> Severity -> LogStr -> Eff es ()
 logMsg ns sev logs = unsafeEmbedIOE $ K.logMsg ns sev logs
 
+-- | Loc-tagged logging when using template-haskell. 
+-- @
+-- $(logT) obj mempty InfoS "Hello world"
+-- @
+{-# INLINE logT #-}
 logT :: ExpQ
 logT = [|\a ns sev msg -> logItem a ns (Just $(getLocTH)) sev msg|]
 
+-- | 'Loc'-tagged logging using 'GHC.Stack.Stack' when available.
+-- This function does not require template-haskell as it automatically uses implicit-callstacks when the code is compiled using GHC > 7.8.
+-- Using an older version of the compiler will result in the emission of a log line without any location information, so be aware of it.
+-- @
+-- logLoc obj mempty InfoS "Hello world"
+-- @
+{-# INLINE logLoc #-}
 logLoc :: (LogItem a, KatipE :> es, HasCallStack) => a -> Namespace -> Severity -> LogStr -> Eff es ()
 logLoc a ns sev logs = unsafeEmbedIOE $ K.logLoc a ns sev logs
-
+-- | Log with everything, including a source code location.
+-- This is very low level and you typically can use 'logT' in its place.
 logItem :: (LogItem a, KatipE :> es) => a -> Namespace -> Maybe Loc -> Severity -> LogStr -> Eff es ()
 logItem a ns loc sev logs = unsafeEmbedIOE $ K.logItem a ns loc sev logs
-
+-- | Log an already constructed 'Item'.
+-- This is the lowest level function that other log* functions use.
+-- It can be useful when implementing centralised logging services.
 logKatipItem :: (LogItem a, KatipE :> es) => Item a -> Eff es ()
 logKatipItem item = unsafeEmbedIOE $ K.logKatipItem item
-
+-- | Perform an action while logging any exceptions that may occur.
+-- @
+-- >>> > logException () mempty ErrorS (error "foo")
+-- @
 logException :: (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> Eff es b -> Eff es b
 logException a ns sev act = unsafeEmbedIOE $ K.logException a ns sev act
-
+-- | Log with full context, but without any code location. 
+-- Automatically supplies payload and namespace.
 logFM :: (KatipE :> es) => Severity -> LogStr -> Eff es ()
 logFM sev logs = unsafeEmbedIOE $ K.logFM sev logs
 
+-- | 'Loc'-tagged logging when using template-haskell.
+-- Automatically supplies payload and namespace.
+-- @
+-- $(logTM) InfoS "Hello world"
+-- @
+{-# INLINE logTM #-}
 logTM :: ExpQ
 logTM = [|logItemM (Just $(getLocTH))|]
-
+-- | 'Loc'-tagged logging when using 'GHC.Stack.getCallStack' implicit-callstacks.
+-- Automatically supplies payload and namespace.
+-- Same consideration as 'logLoc' applies
+-- By default, location will be logged from the module that invokes logLocM.
+-- If you want to use logLocM in a helper, 
+-- wrap the entire helper in withFrozenCallStack to retain the callsite of the helper in the logs.
+-- This function does not require template-haskell. 
+-- @
+-- logLocM InfoS "Hello world"
+-- @
+{-#INLINE logLocM #-}
 logLocM :: (KatipE :> es, HasCallStack) => Severity -> LogStr -> Eff es ()
 logLocM sev logs = unsafeEmbedIOE $ K.logLocM sev logs
-
+-- | Log with everything, including a source code location. 
+-- This is very low level and you typically can use 'logTM' in its place.
+-- Automatically supplies payload and namespace.
 logItemM :: (KatipE :> es, HasCallStack) => Maybe Loc -> Severity -> LogStr -> Eff es ()
 logItemM loc sev logs = unsafeEmbedIOE $ K.logItemM loc sev logs
-
+-- | Perform an action while logging any exceptions that may occur.
+-- @
+-- >>> > error "foo" `logExceptionM` ErrorS
+-- @
 logExceptionM :: (KatipE :> es) => Eff es a -> Severity -> Eff es a
 logExceptionM act sev = unsafeEmbedIOE $ K.logExceptionM act sev
 
+-- | Append a namespace segment to the current namespace for the given monadic action,
+-- then restore the previous state afterwards.
 katipAddNamespace :: (KatipE :> es) => Namespace -> Eff es a -> Eff es a
 katipAddNamespace ns = localKatipNamespace (<> ns)
+-- | Append some context to the current context for the given monadic action,
+-- then restore the previous state afterwards. 
+-- Important note: be careful using this in a loop. 
+-- If you're using something like forever or replicateM_ that does explicit sharing to avoid a memory leak,
+-- youll be fine as it will *sequence* calls to katipAddNamespace,
+-- so each loop will get the same context added.
+-- If you instead roll your own recursion and you're recursing in the action you provide,
+-- you'll instead accumulate tons of redundant contexts and even if they all merge on log,
+-- they are stored in a sequence and will leak memory.
 katipAddContext :: (KatipE :> es, LogItem i) => i -> Eff es a -> Eff es a
 katipAddContext ctx = localKatipContext (<> liftPayload ctx)
+-- | Disable all scribes for the given monadic action,
+-- then restore them afterwards.
 katipNoLogging :: (KatipE :> es) => Eff es a -> Eff es a
 katipNoLogging = localLogEnv $ \lenv -> lenv{_logEnvScribes = mempty}
 
+-- | Logs to a file handle such as stdout, stderr, or a file.
+-- Contexts and other information will be flattened out into bracketed fields. 
+-- For example:]
+-- @
+-- [2016-05-11 21:01:15][MyApp][Info][myhost.example.com][PID 1724][ThreadId 1154][main:Helpers.Logging Helpers/Logging.hs:32:7] Started
+-- [2016-05-11 21:01:15][MyApp.confrabulation][Debug][myhost.example.com][PID 1724][ThreadId 1154][confrab_factor:42.0][main:Helpers.Logging Helpers/Logging.hs:41:9] Confrabulating widgets, with extra namespace and context
+-- [2016-05-11 21:01:15][MyApp][Info][myhost.example.com][PID 1724][ThreadId 1154][main:Helpers.Logging Helpers/Logging.hs:43:7] Namespace and context are back to normal
+-- @
+-- Returns the newly-created 'Scribe'. The finalizer flushes the handle. Handle mode is set to 'System.IO.LineBuffering' automatically.
 mkHandleScribe :: forall es. (KatipE :> es) => ColorStrategy -> Handle -> PermitFunc -> Verbosity -> Eff es Scribe
 mkHandleScribe cs h pf v = unsafeEmbedIOE $ liftIO $ K.mkHandleScribe cs h pf v
+-- | Logs to a file handle such as stdout, stderr, or a file.
+-- Takes a custom 'ItemFormatter' that can be used to format 'Item' as needed.
+-- Returns the newly-created 'Scribe'.
+-- The finalizer flushes the handle.
+-- Handle mode is set to 'System.IO.LineBuffering' automatically.
 mkHandleScribeWithFormatter :: forall es. (KatipE :> es) => (forall a. (LogItem a) => ItemFormatter a) -> ColorStrategy -> Handle -> PermitFunc -> Verbosity -> Eff es Scribe
 mkHandleScribeWithFormatter ifa cs h pf v = unsafeEmbedIOE $ liftIO $ K.mkHandleScribeWithFormatter ifa cs h pf v
+-- | A specialization of 'mkHandleScribe' that takes a 'FilePath' instead of a 'Handle'. It is responsible for opening the file in 'System.IO.AppendMode' and will close the file handle on closeScribe/closeScribes. Does not do log coloring. Sets handle to 'System.IO.LineBuffering' mode.
 mkFileScribe :: forall es. (KatipE :> es) => FilePath -> PermitFunc -> Verbosity -> Eff es Scribe
 mkFileScribe fp pf v = unsafeEmbedIOE $ liftIO $ K.mkFileScribe fp pf v
