@@ -17,7 +17,7 @@
         inputs.haskell-flake.flakeModule
       ];
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
-      perSystem = { config, self', inputs', pkgs, system, ... }: {
+      perSystem = { config, self', inputs', pkgs, system, ... }: let haskellProjectConfig = {}; in{
         # Per-system attributes can be defined here. The self' and inputs'
         # module parameters provide easy access to attributes of the same
         # system.
@@ -31,13 +31,18 @@
           };
         };
         treefmt.projectRootFile = "flake.nix";
-        pre-commit.settings.hooks = {
-          treefmt.enable = true;
-          typos.enable = true;
+        pre-commit.settings = {
+          hooks = {
+            treefmt.enable = true;
+            typos.enable = true;
+          };
+          settings.typos = {
+            ignored-words = ["wheres"];
+          };
         };
-        haskellProjects.default = {
-          
-        };
+        haskellProjects.default = haskellProjectConfig;
+        haskellProjects.ghc96 = haskellProjectConfig // {basePackages = pkgs.haskell.packages.ghc96;};
+        haskellProjects.ghc98 = haskellProjectConfig // {basePackages = pkgs.haskell.packages.ghc98;};
       };
       flake = {
         # The usual flake attributes can be defined here, including system-
