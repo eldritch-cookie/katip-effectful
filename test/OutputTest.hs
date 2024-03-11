@@ -10,9 +10,10 @@ import System.IO (Handle, IOMode (..), hGetContents', openFile)
 import Test.QuickCheck.Instances ()
 import Test.Tasty.QuickCheck
 
-import Katip (runKatipContextT,closeScribes)
-import qualified Katip as K
 import Data.Text (Text)
+import Katip (closeScribes, runKatipContextT)
+import Katip qualified as K
+
 getInteger :: Int -> Gen Int
 getInteger s = chooseInt (0, s)
 
@@ -36,7 +37,7 @@ instance Arbitrary LogStr where
 instance Arbitrary Builder where
   arbitrary = fromText <$> arbitrary
 instance Arbitrary SimpleLogPayload where
-  arbitrary = sl @Text <$> arbitrary <*> arbitrary 
+  arbitrary = sl @Text <$> arbitrary <*> arbitrary
 
 instance Show SimpleLogPayload where
   show = show . toObject
@@ -105,6 +106,6 @@ cleanup = do
 
 logEnvWithScribe :: Handle -> IO LogEnv
 logEnvWithScribe fp = do
-  initialLE <- K.initLogEnv "testing" "testing" 
+  initialLE <- K.initLogEnv "testing" "testing"
   s <- K.mkHandleScribe ColorIfTerminal fp (\_ -> pure True) V3
   K.registerScribe "test" s defaultScribeSettings initialLE
