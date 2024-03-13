@@ -196,7 +196,6 @@ import Language.Haskell.TH (Loc)
 import Language.Haskell.TH.Lib
 import System.IO (Handle)
 import Unsafe.Coerce (unsafeCoerce)
-import qualified Effectful.Katip as haskell
 
 -- | A Effect you can use to run logging actions. there is only one effect as we can't have duplicated instances.
 type KatipE :: Effect
