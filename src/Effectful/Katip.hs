@@ -348,14 +348,15 @@ logException a ns sev act = unsafeEmbedIOE $ K.logException a ns sev act
 logFM :: (KatipE :> es) => Severity -> LogStr -> Eff es ()
 logFM sev logs = unsafeEmbedIOE $ K.logFM sev logs
 
+{-# INLINE logTM #-}
 -- | 'Loc'-tagged logging when using template-haskell.
 -- Automatically supplies payload and namespace.
 -- @
 -- $(logTM) InfoS "Hello world"
 -- @
-{-# INLINE logTM #-}
 logTM :: ExpQ
 logTM = [|logItemM (Just $(getLocTH))|]
+{-#INLINE logLocM #-}
 -- | 'Loc'-tagged logging when using 'GHC.Stack.getCallStack' implicit-callstacks.
 -- Automatically supplies payload and namespace.
 -- Same consideration as 'logLoc' applies
@@ -366,7 +367,6 @@ logTM = [|logItemM (Just $(getLocTH))|]
 -- @
 -- logLocM InfoS "Hello world"
 -- @
-{-#INLINE logLocM #-}
 logLocM :: (KatipE :> es, HasCallStack) => Severity -> LogStr -> Eff es ()
 logLocM sev logs = unsafeEmbedIOE $ K.logLocM sev logs
 -- | Log with everything, including a source code location. 
