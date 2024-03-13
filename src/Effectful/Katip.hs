@@ -311,21 +311,21 @@ logF a ns sev logs = unsafeEmbedIOE $ K.logF a ns sev logs
 logMsg :: forall es. (KatipE :> es) => Namespace -> Severity -> LogStr -> Eff es ()
 logMsg ns sev logs = unsafeEmbedIOE $ K.logMsg ns sev logs
 
+{-# INLINE logT #-}
 -- | Loc-tagged logging when using template-haskell. 
 -- @
 -- $(logT) obj mempty InfoS "Hello world"
 -- @
-{-# INLINE logT #-}
 logT :: ExpQ
 logT = [|\a ns sev msg -> logItem a ns (Just $(getLocTH)) sev msg|]
 
+{-# INLINE logLoc #-}
 -- | 'Loc'-tagged logging using 'GHC.Stack.Stack' when available.
 -- This function does not require template-haskell as it automatically uses implicit-callstacks when the code is compiled using GHC > 7.8.
 -- Using an older version of the compiler will result in the emission of a log line without any location information, so be aware of it.
 -- @
 -- logLoc obj mempty InfoS "Hello world"
 -- @
-{-# INLINE logLoc #-}
 logLoc :: (LogItem a, KatipE :> es, HasCallStack) => a -> Namespace -> Severity -> LogStr -> Eff es ()
 logLoc a ns sev logs = unsafeEmbedIOE $ K.logLoc a ns sev logs
 -- | Log with everything, including a source code location.
