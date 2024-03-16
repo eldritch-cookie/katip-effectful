@@ -188,14 +188,12 @@ import Katip (
   _scribeBufferSize,
  )
 
-import Data.Kind
 import Data.Text (Text)
 import Katip qualified as K
 import Katip.Core (getLocTH)
 import Language.Haskell.TH (Loc)
 import Language.Haskell.TH.Lib
 import System.IO (Handle)
-import Unsafe.Coerce (unsafeCoerce)
 
 -- | A Effect you can use to run logging actions. there is only one effect as we can't have duplicated instances.
 type KatipE :: Effect
@@ -293,16 +291,32 @@ getKatipNamespace = do
 localKatipNamespace :: forall es a. (KatipE :> es) => (Namespace -> Namespace) -> Eff es a -> Eff es a
 localKatipNamespace f = localStaticRep @KatipE $ \(MkKatipE le lc ns) -> MkKatipE le lc $ f ns
 
+type KatipStack = K.KatipContextT (K.KatipT IO)
+
 -- | escape hatch for implementing your own scribes
-unsafeEmbedIOE :: forall es a. (KatipE :> es) => ((KatipE :> es, IOE :> es) => Eff es a) -> Eff es a
-unsafeEmbedIOE act = useDict (unsafeCoerce (MkDict @(KatipE :> es)) :: Dict (KatipE :> es, IOE :> es)) act
+unsafeEmbedIOE
+  :: forall es a. (KatipE :> es)
+  => KatipStack a
+  -> Eff es a
+unsafeEmbedIOE act = do
+  MkKatipE logEnv logContext namespace <- getStaticRep
+  unsafeEff_
+    . K.runKatipT logEnv
+    . K.runKatipContextT logEnv logContext namespace
+    $ act
 
-type Dict :: Constraint -> Type
-data Dict a where
-  MkDict :: (a) => Dict a
+-- | escape hatch for implementing your own scribes
+unsafeEmbedIOE'
+  :: forall es a. (KatipE :> es)
+  => ((forall r. Eff es r -> KatipStack r) -> KatipStack a)
+  -> Eff es a
+unsafeEmbedIOE' k = do
+  MkKatipE logEnv logContext namespace <- getStaticRep
+  unsafeSeqUnliftIO $ \unlift -> do
+    K.runKatipT logEnv
+      . K.runKatipContextT logEnv logContext namespace
+      $ k (liftIO . unlift)
 
-useDict :: forall a r. Dict a -> ((a) => r) -> r
-useDict MkDict r = r
 -- | Log with full context, but without any code location.
 logF :: forall a es. (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> LogStr -> Eff es ()
 logF a ns sev logs = unsafeEmbedIOE $ K.logF a ns sev logs
@@ -342,7 +356,7 @@ logKatipItem item = unsafeEmbedIOE $ K.logKatipItem item
 -- >>> > logException () mempty ErrorS (error "foo")
 -- @
 logException :: (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> Eff es b -> Eff es b
-logException a ns sev act = unsafeEmbedIOE $ K.logException a ns sev act
+logException a ns sev act = unsafeEmbedIOE' $ \unlift -> K.logException a ns sev (unlift act)
 -- | Log with full context, but without any code location. 
 -- Automatically supplies payload and namespace.
 logFM :: (KatipE :> es) => Severity -> LogStr -> Eff es ()
@@ -379,7 +393,7 @@ logItemM loc sev logs = unsafeEmbedIOE $ K.logItemM loc sev logs
 -- >>> > error "foo" `logExceptionM` ErrorS
 -- @
 logExceptionM :: (KatipE :> es) => Eff es a -> Severity -> Eff es a
-logExceptionM act sev = unsafeEmbedIOE $ K.logExceptionM act sev
+logExceptionM act sev = unsafeEmbedIOE' $ \unlift -> K.logExceptionM (unlift act) sev
 
 -- | Append a namespace segment to the current namespace for the given monadic action,
 -- then restore the previous state afterwards.
