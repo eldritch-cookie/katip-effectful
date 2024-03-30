@@ -18,7 +18,7 @@ name:            katip-effectful
 -- See the Haskell package versioning policy (PVP) for standards
 -- guiding when and how versions should be incremented.
 -- https://pvp.haskell.org
-version:         0.0.1
+version:         0.0.2
 
 -- A short (one-line) description of the package.
 synopsis:        Katip integration for Effectful
