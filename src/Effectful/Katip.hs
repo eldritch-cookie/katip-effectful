@@ -3,9 +3,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- |
--- Module: Effectful.Katip
--- Description: Effect to use Katip
+{- |
+Module: Effectful.Katip
+Description: Effect to use Katip
+-}
 module Effectful.Katip (
   -- * Framework Types
   Namespace (..),
@@ -297,7 +298,7 @@ getKatipNamespace = do
 localKatipNamespace :: forall es a. (KatipE :> es) => (Namespace -> Namespace) -> Eff es a -> Eff es a
 localKatipNamespace f = localStaticRep @KatipE $ \(MkKatipE le lc ns) -> MkKatipE le lc $ f ns
 
-type KatipStack = K.KatipContextT (K.KatipT IO)
+type KatipStack = K.KatipContextT IO
 
 -- | escape hatch for implementing your own scribes
 unsafeEmbedIOE ::
@@ -308,7 +309,6 @@ unsafeEmbedIOE ::
 unsafeEmbedIOE act = do
   MkKatipE logEnv logContext namespace <- getStaticRep
   unsafeEff_
-    . K.runKatipT logEnv
     . K.runKatipContextT logEnv logContext namespace
     $ act
 
@@ -321,9 +321,8 @@ unsafeEmbedIOE' ::
 unsafeEmbedIOE' k = do
   MkKatipE logEnv logContext namespace <- getStaticRep
   unsafeSeqUnliftIO $ \unlift -> do
-    K.runKatipT logEnv
-      . K.runKatipContextT logEnv logContext namespace
-      $ k (liftIO . unlift)
+    K.runKatipContextT logEnv logContext namespace $
+      k (liftIO . unlift)
 
 -- | Log with full context, but without any code location.
 logF :: forall a es. (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> LogStr -> Eff es ()
@@ -349,7 +348,6 @@ logT = [|\a ns sev msg -> logItem a ns (Just $(getLocTH)) sev msg|]
 -- @
 -- logLoc obj mempty InfoS "Hello world"
 -- @
---
 logLoc :: (LogItem a, KatipE :> es, HasCallStack) => a -> Namespace -> Severity -> LogStr -> Eff es ()
 logLoc a ns sev logs = unsafeEmbedIOE $ K.logLoc a ns sev logs
 
@@ -369,7 +367,6 @@ logKatipItem item = unsafeEmbedIOE $ K.logKatipItem item
 -- @
 -- >>> > logException () mempty ErrorS (error "foo")
 -- @
---
 logException :: (LogItem a, KatipE :> es) => a -> Namespace -> Severity -> Eff es b -> Eff es b
 logException a ns sev act = unsafeEmbedIOE' $ \unlift -> K.logException a ns sev (unlift act)
 
@@ -385,6 +382,7 @@ logFM sev logs = unsafeEmbedIOE $ K.logFM sev logs
 -- > $(logTM) InfoS "Hello world"
 logTM :: ExpQ
 logTM = [|logItemM (Just $(getLocTH))|]
+
 {-# INLINE logLocM #-}
 
 -- | 'Loc'-tagged logging when using 'GHC.Stack.getCallStack' implicit-callstacks.
@@ -412,7 +410,6 @@ logItemM loc sev logs = unsafeEmbedIOE $ K.logItemM loc sev logs
 -- @
 -- >>> > error "foo" `logExceptionM` ErrorS
 -- @
---
 logExceptionM :: (KatipE :> es) => Eff es a -> Severity -> Eff es a
 logExceptionM act sev = unsafeEmbedIOE' $ \unlift -> K.logExceptionM (unlift act) sev
 

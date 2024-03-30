@@ -17,7 +17,11 @@
         inputs.haskell-flake.flakeModule
       ];
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
-      perSystem = { config, self', inputs', pkgs, system, ... }: let haskellProjectConfig = {}; in{
+      perSystem = { config, self', inputs', pkgs, system, ... }: 
+        let haskellProjectConfig = {
+          }; 
+        in 
+        {
         # Per-system attributes can be defined here. The self' and inputs'
         # module parameters provide easy access to attributes of the same
         # system.
@@ -42,7 +46,13 @@
         };
         haskellProjects.default = haskellProjectConfig;
         haskellProjects.ghc96 = haskellProjectConfig // {basePackages = pkgs.haskell.packages.ghc96;};
-        haskellProjects.ghc98 = haskellProjectConfig // {basePackages = pkgs.haskell.packages.ghc98;};
+        haskellProjects.ghc98 = haskellProjectConfig // {
+          basePackages = pkgs.haskell.packages.ghc98;
+          devShell.hoogle = true;
+          defaults.devShell.tools = p: {inherit (p) cabal-install hlint;};
+          settings = {
+          }; 
+        };
       };
       flake = {
         # The usual flake attributes can be defined here, including system-

@@ -1,4 +1,3 @@
 dist-newstyle/
 .direnv/
-scribeKCT.log
-scribeEff.log
+katip-effectful-test.tix

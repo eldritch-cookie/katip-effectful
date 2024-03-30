@@ -1,19 +1,22 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE UndecidableInstances#-}
 
 module OutputTest where
 
+import Control.Exception.Base
 import Control.Monad (replicateM)
+import Control.Monad.Catch
 import Data.Text.Lazy.Builder (Builder, fromText)
 import Effectful
 import Effectful.Katip
 import Test.QuickCheck.Instances ()
 import Test.Tasty.QuickCheck
 
+import Data.IORef
 import Data.Text (Text)
 import Katip (closeScribes)
 import Katip qualified as K
-import Data.IORef
 
 getInteger :: Int -> Gen Int
 getInteger s = chooseInt (0, s)
@@ -43,28 +46,117 @@ instance Arbitrary SimpleLogPayload where
 instance Show SimpleLogPayload where
   show = show . toObject
 
-dummyScribe ::IORef [String] -> Scribe
+dummyScribe :: IORef [String] -> Scribe
 dummyScribe ref = Scribe (appendIORef ref) (pure ()) (permitItem DebugS)
 
-appendIORef ::forall a. LogItem a => IORef [String] -> Item a -> IO ()
-appendIORef ref val = modifyIORef' ref (\prev -> prev <> [show . fmap toObject $ val])
+appendIORef :: forall a. (LogItem a) => IORef [String] -> Item a -> IO ()
+appendIORef ref val = modifyIORef' ref (\prev -> prev <> [show . fmap toObject $ (val{_itemLoc = Nothing})])
 
-prop_EqualOutputLFM :: Severity -> Namespace -> LogStr -> Property
-prop_EqualOutputLFM severity ns str = ioProperty $ do
-  testKatipAction ns (logFM severity str) (K.logFM severity str)
-prop_EqualOutputLF :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
-prop_EqualOutputLF slp ns severity str = ioProperty $ do
+-- Bare
+--
+prop_LFBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LFBare slp ns severity str = ioProperty $ do
   testKatipAction ns (logF slp ns severity str) (K.logF slp ns severity str)
-
-prop_EqualOutputLMsg :: Namespace -> Severity -> LogStr -> Property
-prop_EqualOutputLMsg ns severity str = ioProperty $ do
+prop_LMsgBare :: Namespace -> Severity -> LogStr -> Property
+prop_LMsgBare ns severity str = ioProperty $ do
   testKatipAction ns (logMsg ns severity str) (K.logMsg ns severity str)
+prop_LTBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LTBare slp ns severity str = ioProperty $ do
+  testKatipAction ns ($(logT) slp ns severity str) ($(K.logT) slp ns severity str)
+prop_LLocBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LLocBare slp ns severity str = ioProperty $ do
+  testKatipAction ns (logLoc slp ns severity str) (K.logLoc slp ns severity str)
+prop_LItemBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LItemBare slp ns severity str = ioProperty $ do
+  testKatipAction ns (logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
 
-testKatipAction:: Namespace -> Eff '[KatipE,IOE] () -> K.KatipContextT IO () -> IO Bool
-testKatipAction ns eff katip = do
-  effRef <- (newIORef mempty ::IO (IORef [String])) 
+-- surprisingly logException doesn't catch the exception
+prop_LExceptionBare :: SimpleLogPayload -> Namespace -> Severity -> Property
+prop_LExceptionBare slp ns severity = ioProperty $ do
+  testKatipAction ns (K.logException slp ns severity (pure ())) (K.logException slp ns severity (pure ()))
+prop_LFClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LFClass slp ns severity str = ioProperty $ do
+  testKatipAction ns (K.logF slp ns severity str) (K.logF slp ns severity str)
+prop_LMsgClass :: Namespace -> Severity -> LogStr -> Property
+prop_LMsgClass ns severity str = ioProperty $ do
+  testKatipAction ns (K.logMsg ns severity str) (K.logMsg ns severity str)
+prop_LTClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LTClass slp ns severity str = ioProperty $ do
+  testKatipAction ns ($(K.logT) slp ns severity str) ($(K.logT) slp ns severity str)
+prop_LLocClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LLocClass slp ns severity str = ioProperty $ do
+  testKatipAction ns (K.logLoc slp ns severity str) (K.logLoc slp ns severity str)
+prop_LItemClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LItemClass slp ns severity str = ioProperty $ do
+  testKatipAction ns (K.logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
+
+-- surprisingly logException doesn't catch the exception
+prop_LExceptionClass :: SimpleLogPayload -> Namespace -> Severity -> Property
+prop_LExceptionClass slp ns severity = ioProperty $ do
+  testKatipAction ns (K.logException slp ns severity (pure ())) (K.logException slp ns severity (pure ()))
+
+-- Context
+--
+prop_LFContext :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LFContext slp ns severity str = ioProperty $ do
+  testKatipContextAction ns (logF slp ns severity str) (K.logF slp ns severity str)
+prop_LMsgContext :: Namespace -> Severity -> LogStr -> Property
+prop_LMsgContext ns severity str = ioProperty $ do
+  testKatipContextAction ns (logMsg ns severity str) (K.logMsg ns severity str)
+prop_LTContext :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LTContext slp ns severity str = ioProperty $ do
+  testKatipContextAction ns ($(logT) slp ns severity str) ($(K.logT) slp ns severity str)
+prop_LLocContext :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LLocContext slp ns severity str = ioProperty $ do
+  testKatipContextAction ns (logLoc slp ns severity str) (K.logLoc slp ns severity str)
+prop_LItemContext :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
+prop_LItemContext slp ns severity str = ioProperty $ do
+  testKatipContextAction ns (logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
+
+-- surprisingly logException doesn't catch the exception
+prop_LExceptionContext :: SimpleLogPayload -> Namespace -> Severity -> Property
+prop_LExceptionContext slp ns severity = ioProperty $ do
+  testKatipContextAction ns (logException slp ns severity (pure ())) (K.logException slp ns severity (pure ()))
+
+-- Monadic
+prop_LFMEff :: Severity -> Namespace -> LogStr -> Property
+prop_LFMEff severity ns str = ioProperty $ do
+  testKatipContextAction ns (logFM severity str) (K.logFM severity str)
+prop_LTMEff :: Severity -> Namespace -> LogStr -> Property
+prop_LTMEff severity ns str = ioProperty $ do
+  testKatipContextAction ns ($(logTM) severity str) ($(K.logTM) severity str)
+prop_LLocMEff :: Severity -> Namespace -> LogStr -> Property
+prop_LLocMEff severity ns str = ioProperty $ do
+  testKatipContextAction ns (logLocM severity str) (K.logLocM severity str)
+prop_LItemMEff :: Severity -> Namespace -> LogStr -> Property
+prop_LItemMEff severity ns str = ioProperty $ do
+  testKatipContextAction ns (logItemM Nothing severity str) (K.logItemM Nothing severity str)
+prop_LExceptionMEff :: Severity -> Namespace -> Property
+prop_LExceptionMEff severity ns = ioProperty $ do
+  testKatipContextAction ns (logExceptionM (pure ()) severity) (K.logExceptionM (pure ()) severity)
+
+-- Monadic
+prop_LFMClass :: Severity -> Namespace -> LogStr -> Property
+prop_LFMClass severity ns str = ioProperty $ do
+  testKatipContextAction ns (K.logFM severity str) (K.logFM severity str)
+prop_LTMClass :: Severity -> Namespace -> LogStr -> Property
+prop_LTMClass severity ns str = ioProperty $ do
+  testKatipContextAction ns ($(K.logTM) severity str) ($(K.logTM) severity str)
+prop_LLocMClass :: Severity -> Namespace -> LogStr -> Property
+prop_LLocMClass severity ns str = ioProperty $ do
+  testKatipContextAction ns (K.logLocM severity str) (K.logLocM severity str)
+prop_LItemMClass :: Severity -> Namespace -> LogStr -> Property
+prop_LItemMClass severity ns str = ioProperty $ do
+  testKatipContextAction ns (K.logItemM Nothing severity str) (K.logItemM Nothing severity str)
+prop_LExceptionMClass :: Severity -> Namespace -> Property
+prop_LExceptionMClass severity ns = ioProperty $ do
+  testKatipContextAction ns (K.logExceptionM (pure ()) severity) (K.logExceptionM (pure ()) severity)
+
+testKatipContextAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipContextT IO () -> IO Bool
+testKatipContextAction ns eff katip = do
+  effRef <- (newIORef mempty :: IO (IORef [String]))
   katipRef <- (newIORef mempty :: IO (IORef [String]))
-  le <- K.initLogEnv "testing" "testing"
+  le <- K.initLogEnv ns "testing"
   effLE <- K.registerScribe "test" (dummyScribe effRef) defaultScribeSettings le
   katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
   runEff . runKatipContextE effLE () ns $ eff
@@ -74,3 +166,16 @@ testKatipAction ns eff katip = do
   val2 <- readIORef katipRef
   pure $ val1 == val2
 
+testKatipAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipT IO () -> IO Bool
+testKatipAction ns eff katip = do
+  effRef <- (newIORef mempty :: IO (IORef [String]))
+  katipRef <- (newIORef mempty :: IO (IORef [String]))
+  le <- K.initLogEnv ns "testing"
+  effLE <- K.registerScribe "test" (dummyScribe effRef) defaultScribeSettings le
+  katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
+  runEff . runKatipE effLE $ eff
+  K.runKatipT katipLE $ katip
+  _ <- closeScribes katipLE
+  val1 <- readIORef effRef
+  val2 <- readIORef katipRef
+  pure $ val1 == val2

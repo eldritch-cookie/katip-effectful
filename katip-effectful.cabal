@@ -49,16 +49,16 @@ bug-reports:     https://github.com/eldritch-cookie/katip-effectful/issues
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files: CHANGELOG.md
 category:        library, logging, data, bsd3
+tested-with: GHC== 9.4.6, GHC== 9.8.2
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
 -- extra-source-files:
 
 common deps
-  ghc-options:        -Wall
+  ghc-options:        -Wall -Wcompat
   build-depends:
     , base              >=4.17.2   && <5
     , effectful-core    >=2.2.2    && <3
-    , effectful-plugin  >=1.1.0.2  && <1.2
     , exceptions        >=0.9      && <1
     , katip             >=0.8.7    && <1
     , template-haskell  >=2.19.0.0 && <3
@@ -95,18 +95,13 @@ test-suite katip-effectful-test
   other-modules:      OutputTest
   ghc-options:        -threaded
   build-depends:
-    , containers            >=0.6.7    && <1
     , katip-effectful
-    , QuickCheck            >=2.14.3   && <3
     , quickcheck-instances  >=0.3.29.1 && <0.4
     , tasty                 >=1.4.3    && <2
     , tasty-golden          >=2.3.5    && <3
     , tasty-hunit           >=0.10.1   && <1
     , tasty-quickcheck      >=0.10.2   && <1
     , text                  >=2.0.2    && <3
-    , time                  >=1.12.2   && <2
-    , unix                  >=2.7.3    && <3
-    , aeson 
 
   build-tool-depends: tasty-discover:tasty-discover
 
