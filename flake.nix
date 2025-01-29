@@ -1,5 +1,5 @@
 {
-  description = "Description for the project";
+  description = "Development flake of katip-effectful Haskell package";
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -22,14 +22,9 @@
           }; 
         in 
         {
-        # Per-system attributes can be defined here. The self' and inputs'
-        # module parameters provide easy access to attributes of the same
-        # system.
-
-        # Equivalent to  inputs'.nixpkgs.legacyPackages.hello;
         treefmt.programs = {
           cabal-fmt.enable = true;
-          ormolu = {
+          formolu = {
             enable = true;
             package = pkgs.haskellPackages.fourmolu;
           };
@@ -44,20 +39,20 @@
             ignored-words = ["wheres"];
           };
         };
-        haskellProjects.default = haskellProjectConfig;
-        haskellProjects.ghc96 = haskellProjectConfig // {basePackages = pkgs.haskell.packages.ghc96;};
-        haskellProjects.ghc98 = haskellProjectConfig // {
-          basePackages = pkgs.haskell.packages.ghc98;
+        haskellProjects.default = haskellProjectConfig // {
+          basePackages = pkgs.haskell.packages.ghc910;
+          defaults.devShell.tools = p: {inherit (p) cabal-install haskell-language-server;};
+          otherOverlays = [
+            (hself: hsuper: { katip = pkgs.haskell.lib.dontCheck hsuper.katip;})
+         ];
+        };
+        haskellProjects.ghc912 = haskellProjectConfig // {
+          basePackages = pkgs.haskell.packages.ghc912;
           devShell.hoogle = true;
-          defaults.devShell.tools = p: {inherit (p) cabal-install hlint;};
-          settings = {
-          }; 
+          defaults.devShell.tools = p: {inherit (p) cabal-install;};
         };
       };
       flake = {
-        # The usual flake attributes can be defined here, including system-
-        # agnostic ones like nixosModule and system-enumerating ones, although
-        # those are more easily expressed in perSystem.
       };
     };
 }
