@@ -49,7 +49,7 @@
         haskellProjects.ghc912 = haskellProjectConfig // {
           basePackages = pkgs.haskell.packages.ghc912;
           devShell.hoogle = true;
-          defaults.devShell.tools = p: {inherit (p) cabal-install;};
+          defaults.devShell.tools = p: {inherit (p) hpc cabal-install;};
         };
       };
       flake = {

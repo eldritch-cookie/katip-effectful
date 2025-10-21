@@ -4,7 +4,7 @@
 
 * First version. Released on an unsuspecting world.
 
-## 0.0.2 -- 2024-03-30
+## 0.0.2 -- INSERTDATE
 
 * refactored internal code.
 * certified package compiles on ghc 9.8 .

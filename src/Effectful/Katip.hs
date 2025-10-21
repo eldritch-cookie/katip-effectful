@@ -332,7 +332,6 @@ logF a ns sev logs = unsafeEmbedIOE $ K.logF a ns sev logs
 logMsg :: forall es. (KatipE :> es) => Namespace -> Severity -> LogStr -> Eff es ()
 logMsg ns sev logs = unsafeEmbedIOE $ K.logMsg ns sev logs
 
-{-# INLINE logT #-}
 
 -- | Loc-tagged logging when using template-haskell.
 -- > $(logT) obj mempty InfoS "Hello world"

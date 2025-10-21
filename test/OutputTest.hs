@@ -4,7 +4,6 @@
 
 module OutputTest where
 
-import Control.Exception.Base
 import Control.Monad (replicateM)
 import Control.Monad.Catch
 import Data.Text.Lazy.Builder (Builder, fromText)
@@ -12,11 +11,14 @@ import Effectful
 import Effectful.Katip
 import Test.QuickCheck.Instances ()
 import Test.Tasty.QuickCheck
+import Data.Time
 
 import Data.IORef
 import Data.Text (Text)
 import Katip (closeScribes)
 import Katip qualified as K
+
+--import Debug.Trace
 
 getInteger :: Int -> Gen Int
 getInteger s = chooseInt (0, s)
@@ -52,6 +54,40 @@ dummyScribe ref = Scribe (appendIORef ref) (pure ()) (permitItem DebugS)
 appendIORef :: forall a. (LogItem a) => IORef [String] -> Item a -> IO ()
 appendIORef ref val = modifyIORef' ref (\prev -> prev <> [show . fmap toObject $ (val{_itemLoc = Nothing})])
 
+zeroUTC :: UTCTime
+zeroUTC = UTCTime (toEnum 0) 0
+
+dummyTimer :: IO UTCTime
+dummyTimer = pure zeroUTC
+
+testKatipContextAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipContextT IO () -> IO Bool
+testKatipContextAction ns eff katip = do
+  effRef <- (newIORef mempty :: IO (IORef [String]))
+  katipRef <- (newIORef mempty :: IO (IORef [String]))
+  leOld <- K.initLogEnv ns "testing"
+  let le = leOld {_logEnvTimer = dummyTimer}
+  katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
+  runEff . startKatipContextE "testing" () ns . localLogEnv (\env -> env {_logEnvTimer = dummyTimer})$ registerScribe "test" (dummyScribe effRef) defaultScribeSettings >> eff
+  K.runKatipContextT katipLE () ns $ katip
+  _ <- closeScribes katipLE
+  val1 <- readIORef effRef
+  val2 <- readIORef katipRef
+  pure $ val1 == val2
+
+testKatipAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipT IO () -> IO Bool
+testKatipAction ns eff katip = do
+  effRef <- (newIORef mempty :: IO (IORef [String]))
+  katipRef <- (newIORef mempty :: IO (IORef [String]))
+  leOld <- K.initLogEnv ns "testing"
+  let le = leOld {_logEnvTimer = dummyTimer}
+  katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
+  runEff . startKatipE ns "testing" . localLogEnv (\env -> env {_logEnvTimer = dummyTimer})$ registerScribe "test" (dummyScribe effRef) defaultScribeSettings >> eff
+  K.runKatipT katipLE $ katip
+  _ <- closeScribes katipLE
+  val1 <- readIORef effRef
+  val2 <- readIORef katipRef
+  pure $ val1 == val2
+
 -- Bare
 --
 prop_LFBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
@@ -69,11 +105,11 @@ prop_LLocBare slp ns severity str = ioProperty $ do
 prop_LItemBare :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
 prop_LItemBare slp ns severity str = ioProperty $ do
   testKatipAction ns (logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
-
 -- surprisingly logException doesn't catch the exception
 prop_LExceptionBare :: SimpleLogPayload -> Namespace -> Severity -> Property
 prop_LExceptionBare slp ns severity = ioProperty $ do
-  testKatipAction ns (K.logException slp ns severity (pure ())) (K.logException slp ns severity (pure ()))
+  testKatipAction ns (logException slp ns severity (pure ())) (K.logException slp ns severity (pure ()))
+
 prop_LFClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
 prop_LFClass slp ns severity str = ioProperty $ do
   testKatipAction ns (K.logF slp ns severity str) (K.logF slp ns severity str)
@@ -89,7 +125,6 @@ prop_LLocClass slp ns severity str = ioProperty $ do
 prop_LItemClass :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
 prop_LItemClass slp ns severity str = ioProperty $ do
   testKatipAction ns (K.logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
-
 -- surprisingly logException doesn't catch the exception
 prop_LExceptionClass :: SimpleLogPayload -> Namespace -> Severity -> Property
 prop_LExceptionClass slp ns severity = ioProperty $ do
@@ -112,7 +147,6 @@ prop_LLocContext slp ns severity str = ioProperty $ do
 prop_LItemContext :: SimpleLogPayload -> Namespace -> Severity -> LogStr -> Property
 prop_LItemContext slp ns severity str = ioProperty $ do
   testKatipContextAction ns (logItem slp ns Nothing severity str) (K.logItem slp ns Nothing severity str)
-
 -- surprisingly logException doesn't catch the exception
 prop_LExceptionContext :: SimpleLogPayload -> Namespace -> Severity -> Property
 prop_LExceptionContext slp ns severity = ioProperty $ do
@@ -135,7 +169,7 @@ prop_LExceptionMEff :: Severity -> Namespace -> Property
 prop_LExceptionMEff severity ns = ioProperty $ do
   testKatipContextAction ns (logExceptionM (pure ()) severity) (K.logExceptionM (pure ()) severity)
 
--- Monadic
+-- -- class
 prop_LFMClass :: Severity -> Namespace -> LogStr -> Property
 prop_LFMClass severity ns str = ioProperty $ do
   testKatipContextAction ns (K.logFM severity str) (K.logFM severity str)
@@ -151,31 +185,3 @@ prop_LItemMClass severity ns str = ioProperty $ do
 prop_LExceptionMClass :: Severity -> Namespace -> Property
 prop_LExceptionMClass severity ns = ioProperty $ do
   testKatipContextAction ns (K.logExceptionM (pure ()) severity) (K.logExceptionM (pure ()) severity)
-
-testKatipContextAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipContextT IO () -> IO Bool
-testKatipContextAction ns eff katip = do
-  effRef <- (newIORef mempty :: IO (IORef [String]))
-  katipRef <- (newIORef mempty :: IO (IORef [String]))
-  le <- K.initLogEnv ns "testing"
-  effLE <- K.registerScribe "test" (dummyScribe effRef) defaultScribeSettings le
-  katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
-  runEff . runKatipContextE effLE () ns $ eff
-  K.runKatipContextT katipLE () ns $ katip
-  _ <- closeScribes katipLE
-  val1 <- readIORef effRef
-  val2 <- readIORef katipRef
-  pure $ val1 == val2
-
-testKatipAction :: Namespace -> Eff '[KatipE, IOE] () -> K.KatipT IO () -> IO Bool
-testKatipAction ns eff katip = do
-  effRef <- (newIORef mempty :: IO (IORef [String]))
-  katipRef <- (newIORef mempty :: IO (IORef [String]))
-  le <- K.initLogEnv ns "testing"
-  effLE <- K.registerScribe "test" (dummyScribe effRef) defaultScribeSettings le
-  katipLE <- K.registerScribe "test" (dummyScribe katipRef) defaultScribeSettings le
-  runEff . runKatipE effLE $ eff
-  K.runKatipT katipLE $ katip
-  _ <- closeScribes katipLE
-  val1 <- readIORef effRef
-  val2 <- readIORef katipRef
-  pure $ val1 == val2

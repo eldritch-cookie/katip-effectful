@@ -96,6 +96,7 @@ test-suite katip-effectful-test
   ghc-options:        -threaded
   build-depends:
     , katip-effectful
+    , time
     , quickcheck-instances  >=0.3.29.1 && <0.4
     , tasty                 >=1.4.3    && <2
     , tasty-golden          >=2.3.5    && <3
